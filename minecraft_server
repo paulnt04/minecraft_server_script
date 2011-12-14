@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-prefix = "/Users/panbox/Projects/minecraft_scripts"
+prefix = "/prgm/local"
 command, name, _options = ARGV
 working_dir = "#{prefix}/minecraft_#{name.to_s}"
 if !(Dir.exists?(working_dir))
