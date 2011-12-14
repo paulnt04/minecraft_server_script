@@ -2,11 +2,11 @@
 
 prefix = "/prgm/local/minecraft"
 command, type, name, _options = ARGV
-if !(type =~ /(minecraft|bukkit)/i)
+if !(type =~ /(minecraft|bukkit)/i) && !(command =~ /(status|list)/)
   raise RuntimeError, "Type #{type} not recognized. Please use [minecraft|bukkit]"
 end
-working_dir = "#{prefix}/#{type}_#{name.to_s}"
-if !(File.exists?(working_dir))
+working_dir = "#{prefix}/#{type if !(name.nil?)}#{'_' if !(type.nil? || name.nil?)}#{name.to_s}"
+if !(File.exists?(working_dir)) && !name.nil?
   @new = true
   number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
   port = 48565 + number.to_i
@@ -91,11 +91,13 @@ database:
   end
 end
 Dir.chdir(working_dir) do
+  rm = "#{type}_#{name}"
+  rt = "#{type || "(minecraft|bukkit)"}_.+$"
   case command
   when /start/
-    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}.empty?)
+    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
       %x[screen -dmS #{type}_#{name} java -Xmx4096M -Xincgc -jar craftbukkit-1.0.1-R1.jar]
-      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}
       pids.each do |pid|
         puts "#{type.capitalize} Server #{name} running in screen session \"#{pid}\""
       end
@@ -103,12 +105,12 @@ Dir.chdir(working_dir) do
       puts "#{type.capitalize} Server #{name} is already running"
     end
   when /stop/
-    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}.empty?)
-      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}
+    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}
       pids.each do |pid|
         system(%x[screen -x #{pid} -X kill && sleep 5])
       end
-      if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}.empty?)
+      if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
         puts "#{type.capitalize} Server #{name} with pid#{'s' if pids.count > 1} #{pids.join(', ')} ha#{pids.count > 1 ? 've' : 's'} been successfully stopped"
       else
         puts "Error: #{type.capitalize} Server #{name} is still running"
@@ -116,10 +118,13 @@ Dir.chdir(working_dir) do
     else
       puts "#{type.capitalize} Server #{name} is not running."
     end
-  when /status/
-    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{type}_#{name}$/}
+  when /(status|list)/
+    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{name ? rm : rt}$/}
     pids.each do |pid|
-      puts "#{type.capitalize} Server #{name} running in screen session \"#{pid}\""
+      puts "#{"#{type.capitalize} " rescue nil}Server #{"#{name} " if !name.nil?}running in screen session \"#{pid}\""
+    end
+    if pids.empty?
+      puts "No #{"#{type.capitalize} " rescue nil}Servers are running."
     end
   when /update/ 
     if type =~ /minecraft/i
