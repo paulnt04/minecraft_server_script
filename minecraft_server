@@ -5,12 +5,12 @@ command, name, _options = ARGV
 working_dir = "#{prefix}/minecraft_#{name.to_s}"
 if !(File.exists?(working_dir))
   @new = true
+  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
+  port = 48565 + number.to_i
   mkdir = system(%[cp -r #{prefix}/minecraft.template #{working_dir}])
   if !(mkdir)
     raise RuntimeError, "Error creating server directory"
   end
-  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
-  port = 48565 + number.to_i
   Dir.chdir(working_dir) do
     %w[banned-ips.txt banned-players.txt server.log white-list.txt].each do |filename|
       File.open(filename, 'w+') {}
