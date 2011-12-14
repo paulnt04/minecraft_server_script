@@ -1,18 +1,21 @@
 #!/usr/bin/env ruby
 
-prefix = "/prgm/local"
+prefix = "/prgm/local/minecraft"
 command, type, name, _options = ARGV
-working_dir = "#{prefix}/bukkit_#{name.to_s}"
+if !(type =~ /(minecraft|bukkit)/i)
+  raise RuntimeError, "Type #{type} not recognized. Please use [minecraft|bukkit]"
+end
+working_dir = "#{prefix}/#{type}_#{name.to_s}"
 if !(File.exists?(working_dir))
   @new = true
   number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
   port = 48565 + number.to_i
-  mkdir = system(%[cp -r #{prefix}/bukkit.template #{working_dir}])
+  mkdir = system(%[cp -r #{prefix}/#{type}.template #{working_dir}])
   if !(mkdir)
     raise RuntimeError, "Error creating server directory"
   end
   Dir.chdir(working_dir) do
-    %w[banned-ips.txt banned-players.txt permissions.yml server.log white-list.txt].each do |filename|
+    %w[banned-ips.txt banned-players.txt server.log white-list.txt].concat((type =~ /bukkit/i ? ['permissions.yml'] : [])).each do |filename|
       File.open(filename, 'w+') {}
     end
     Dir.mkdir('plugins')
@@ -161,9 +164,9 @@ Dir.chdir(working_dir) do
     end
   when /generate/
     if @new
-      puts "Successfully created new server in #{working_dir}"
+      puts "Successfully created new #{type.capitalize} Server in #{working_dir}"
     else
-      puts "Server #{name} already exists!"
+      puts "#{type.capitalize} Server #{name} already exists!"
     end
   else
     puts "MineCraft Server Script v1.0","minecraft_server [command] [type] [name] [options]","commands: generate/start/stop/status/modify"
