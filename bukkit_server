@@ -1,0 +1,165 @@
+#!/usr/bin/env ruby
+
+prefix = "/Users/panbox/Projects/minecraft_scripts"
+command, name, _options = ARGV
+working_dir = "#{prefix}/bukkit_#{name.to_s}"
+if !(Dir.exists?(working_dir))
+  @new = true
+  mkdir = system(%[cp -r #{prefix}/bukkit.template #{working_dir}])
+  if !(mkdir)
+    raise RuntimeError, "Error creating server directory"
+  end
+  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
+  port = 48565 + number.to_i
+  Dir.chdir(working_dir) do
+    %w[banned-ips.txt banned-players.txt permissions.yml server.log white-list.txt].each do |filename|
+      File.open(filename, 'w+') {}
+    end
+    Dir.mkdir('plugins')
+    options = eval(_options || "{}")
+    if options.class != Hash
+      options = {}
+    end
+    %w[ops admins].each do |a|
+      if options[a.to_sym] && options[a.to_sym].class.to_s =~ /(Array|String)/i
+        instance_variable_set("@#{a}", options[a.to_sym])
+        instance_variable_set("@#{a}", [instance_variable_get("@#{a}")]) if instance_variable_get("@#{a}").instance_of?(String)
+      else
+        instance_variable_set("@#{a}",['paulnt04'])
+      end
+      File.open("#{a}.txt",'w+') do |f|
+        instance_variable_get("@#{a}").each do |line|
+          f.write("#{line}\n")
+        end
+      end
+    end
+    File.open('bukkit.yml','w+') do |f|
+      f.write <<-EOF
+# This is the main configuration file for Bukkit.
+# As you can see, there's actually not that much to configure without any plugins.
+# For a reference for any variable inside this file, check out the bukkit wiki at
+# http://wiki.bukkit.org/Bukkit.yml
+# 
+# If you need help on this file, feel free to join us on irc or leave a message
+# on the forums asking for advice.
+# 
+# IRC: #bukkit @ esper.net
+#    (If this means nothing to you, just go to http://webchat.esper.net/?channels=bukkit )
+# Forums: http://forums.bukkit.org/forums/bukkit-help.6/
+# Twitter: http://twitter.com/Craftbukkit
+# Bug tracker: http://leaky.bukkit.org/
+
+
+settings:
+  allow-end: true
+  spawn-radius: 16
+  permissions-file: permissions.yml
+  update-folder: update
+  ping-packet-limit: 100
+aliases:
+  icanhasbukkit:
+  - version
+database:
+  username: bukkit
+  isolation: SERIALIZABLE
+  driver: org.sqlite.JDBC
+  password: walrus
+  url: jdbc:sqlite:{DIR}{NAME}.db
+  EOF
+    end
+    if name.to_i != 0
+      _name = "minecraft#{name}"
+    else
+      _name = name
+    end
+    defaults = eval(%[{"allow-nether" => true, "level-name" => "#{_name}", "allow-flight" => false, "enable-query" => false, "server-port" => #{port}, "enable-rcon" => false, "level-seed" => "", "server-ip" => "", "white-list" => false, "spawn-animals" => true, "online-mode" => true, "pvp" => true, "difficulty" => 1, "gamemode" => 0, "max-players" => 20, "spawn-monsters" => true, "view-distance" => 10, "motd" => "A Minecraft Server"}])
+    File.open('server.properties','w+') do |f|
+      defaults.each do |k,v|
+        if options[k.to_s].to_s.empty?
+          option = v.to_s
+        else
+          option = options[k.to_s].to_s
+        end
+        f.write("#{k.to_s}=#{option}\n")
+      end
+    end
+  end
+end
+Dir.chdir(working_dir) do
+  case command
+  when /start/
+    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}.empty?)
+      %x[screen -dmS bukkit_#{name} java -Xmx4096M -Xincgc -jar craftbukkit-1.0.1-R1.jar]
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}
+      pids.each do |pid|
+        puts "Bukkit Server #{name} running in screen session \"#{pid}\""
+      end
+    else
+      puts "Bukkit Server #{name} is already running"
+    end
+  when /stop/
+    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}.empty?)
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}
+      pids.each do |pid|
+        system(%x[screen -x #{pid} -X kill && sleep 2])
+      end
+      if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}.empty?)
+        puts "Bukkit Server #{name} has been successfully stopped"
+      else
+        puts "Error: Bukkit Server #{name} is still running"
+      end
+    else
+      puts "Bukkit Server #{name} is not running."
+    end
+  when /status/
+    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}
+    pids.each do |pid|
+      puts "Bukkit Server #{name} running in screen session \"#{pid}\""
+    end
+#  when /update/
+#    backup = system(%[for i in *.jar; do mv "$i" "$i".backup; done])
+#    update = system(%[curl -O https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar])
+#    if update
+#      puts "Bukkit Server #{name} has been updated successfully"
+#      system(%[rm *.jar.backup])
+#    else
+#      puts "There was an error updating craftbukkit.jar"
+#      system(%x[for i in *.backup; do mv "$i" "${i/.backup}"; done])
+#    end
+  when /modify/
+    options = eval(_options || "{}")
+    if options.class != Hash
+      options = {}
+    end
+    %w[ops admins].each do |a|
+      if options[a.to_sym] && options[a.to_sym].class.to_s =~ /(Array|String)/i
+        instance_variable_set("@#{a}", options[a.to_sym])
+        instance_variable_set("@#{a}", [instance_variable_get("@#{a}")]) if instance_variable_get("@#{a}").instance_of?(String)
+        File.open("#{a}.txt",'a+') do |f|
+          instance_variable_get("@#{a}").each do |line|
+           f.write("#{line}\n")
+          end
+        end
+      end
+    end
+    properties = File.read('server.properties').split(/\n/)
+    File.open('server.properties','w+') do |f|
+      properties.map{|p| [p.split("=")[0],(p.split("=")[1] rescue "")]}.each do |k,v|
+        if options[k.to_s].to_s.empty?
+          option = v.to_s
+        else
+          option = options[k.to_s].to_s
+        end
+        f.write("#{k}=#{option}\n")
+      end
+    end
+  when /generate/
+    if @new
+      puts "Successfully created new server in #{working_dir}"
+    else
+      puts "Server #{name} already exists!"
+    end
+  else
+    puts "MineCraft Server Script v1.0","minecraft_server [command] [name] [options]","commands: generate/start/stop/status/modify"
+  end
+end

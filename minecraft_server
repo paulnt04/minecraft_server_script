@@ -1,0 +1,130 @@
+#!/usr/bin/env ruby
+
+prefix = "/Users/panbox/Projects/minecraft_scripts"
+command, name, _options = ARGV
+working_dir = "#{prefix}/minecraft_#{name.to_s}"
+if !(Dir.exists?(working_dir))
+  @new = true
+  mkdir = system(%[cp -r #{prefix}/minecraft.template #{working_dir}])
+  if !(mkdir)
+    raise RuntimeError, "Error creating server directory"
+  end
+  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
+  port = 48565 + number.to_i
+  Dir.chdir(working_dir) do
+    %w[banned-ips.txt banned-players.txt server.log white-list.txt].each do |filename|
+      File.open(filename, 'w+') {}
+    end
+    options = eval(_options || "{}")
+    if options.class != Hash
+      options = {}
+    end
+    %w[ops admins].each do |a|
+      if options[a.to_sym] && options[a.to_sym].class.to_s =~ /(Array|String)/i
+        instance_variable_set("@#{a}", options[a.to_sym])
+        instance_variable_set("@#{a}", [instance_variable_get("@#{a}")]) if instance_variable_get("@#{a}").instance_of?(String)
+      else
+        instance_variable_set("@#{a}",['paulnt04'])
+      end
+      File.open("#{a}.txt",'w+') do |f|
+        instance_variable_get("@#{a}").each do |line|
+          f.write("#{line}\n")
+        end
+      end
+    end
+    if name.to_i != 0
+      _name = "minecraft#{name}"
+    else
+      _name = name
+    end
+    defaults = eval(%[{"allow-nether" => true, "level-name" => "#{_name}", "allow-flight" => false, "enable-query" => false, "server-port" => #{port}, "enable-rcon" => false, "level-seed" => "", "server-ip" => "", "white-list" => false, "spawn-animals" => true, "online-mode" => true, "pvp" => true, "difficulty" => 1, "gamemode" => 0, "max-players" => 20, "spawn-monsters" => true, "view-distance" => 10, "motd" => "A Minecraft Server"}])
+    File.open('server.properties','w+') do |f|
+      defaults.each do |k,v|
+        if options[k.to_s].to_s.empty?
+          option = v.to_s
+        else
+          option = options[k.to_s].to_s
+        end
+        f.write("#{k.to_s}=#{option}\n")
+      end
+    end
+  end
+end
+Dir.chdir(working_dir) do
+  case command
+  when /start/
+    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
+      %x[screen -dmS minecraft_#{name} java -Xms4096M -Xmx4096M -jar minecraft_server.jar nogui]
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+      pids.each do |pid|
+        puts "MineCraft Server #{name} running in screen session \"#{pid}\""
+      end
+    else
+      puts "MineCraft Server #{name} is already running"
+    end
+  when /stop/
+    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+      pids.each do |pid|
+        system(%x[screen -x #{pid} -X kill && sleep 2])
+      end
+      if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
+        puts "MineCraft Server #{name} has been successfully stopped"
+      else
+        puts "Error: MineCraft Server #{name} is still running"
+      end
+    else
+      puts "MineCraft Server #{name} is not running."
+    end
+  when /status/
+    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+    pids.each do |pid|
+      puts "MineCraft Server #{name} running in screen session \"#{pid}\""
+    end
+  when /update/
+    backup = system(%[cp minecraft_server.jar minecraft_server.jar.backup])
+    update = system(%[curl -O https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar])
+    if update
+      puts "MineCraft Server #{name} has been updated successfully"
+      system(%[rm minecraft_server.jar.backup])
+    else
+      puts "There was an error updating minecraft_server.jar"
+      system(%x[mv minecraft_server.jar.backup minecraft_server.jar])
+    end
+  when /modify/
+    options = eval(_options || "{}")
+    if options.class != Hash
+      options = {}
+    end
+    %w[ops admins].each do |a|
+      if options[a.to_sym] && options[a.to_sym].class.to_s =~ /(Array|String)/i
+        instance_variable_set("@#{a}", options[a.to_sym])
+        instance_variable_set("@#{a}", [instance_variable_get("@#{a}")]) if instance_variable_get("@#{a}").instance_of?(String)
+        File.open("#{a}.txt",'a+') do |f|
+          instance_variable_get("@#{a}").each do |line|
+           f.write("#{line}\n")
+          end
+        end
+      end
+    end
+    properties = File.read('server.properties').split(/\n/)
+    File.open('server.properties','w+') do |f|
+      properties.map{|p| [p.split("=")[0],(p.split("=")[1] rescue "")]}.each do |k,v|
+        if options[k.to_s].to_s.empty?
+          option = v.to_s
+        else
+          option = options[k.to_s].to_s
+        end
+        f.write("#{k}=#{option}\n")
+      end
+    end
+  when /generate/
+    if @new
+      puts "Successfully created new server in #{working_dir}"
+    else
+      puts "Server #{name} already exists!"
+    end
+  else
+    puts "MineCraft Server Script v1.0","minecraft_server [command] [name] [options]","commands: generate/start/stop/status/update/modify"
+  end
+end
