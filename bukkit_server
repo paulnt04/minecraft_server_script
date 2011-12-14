@@ -3,7 +3,7 @@
 prefix = "/prgm/local"
 command, name, _options = ARGV
 working_dir = "#{prefix}/bukkit_#{name.to_s}"
-if !(Dir.exists?(working_dir))
+if !(File.exists?(working_dir))
   @new = true
   mkdir = system(%[cp -r #{prefix}/bukkit.template #{working_dir}])
   if !(mkdir)
@@ -104,7 +104,7 @@ Dir.chdir(working_dir) do
         system(%x[screen -x #{pid} -X kill && sleep 2])
       end
       if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.bukkit_#{name}$/}.empty?)
-        puts "Bukkit Server #{name} has been successfully stopped"
+        puts "Bukkit Server #{name} with pid#{'s' if pids.count > 1} #{pids.join(', ')} ha#{pids.count > 1 ? 've' : 's'} been successfully stopped"
       else
         puts "Error: Bukkit Server #{name} is still running"
       end
