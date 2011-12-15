@@ -34,7 +34,9 @@ Name:
 alphanumeric
 
 Commands:
+
 generate - (requires type and name. options allow customization). Copies the #{type}.template to #{type}_#{name} and generates default config options. options is a hash (in bash, needs to be escaped or in quotes). and takes any option in server.properties and takes an array for :ops and :admin
+
 Ex: minecraft_server generate minecraft 1 "{:ops => ['username'], :admin => ['username'], 'server-port' => 12345}"
 
 start - (requires type and name). Starts server in a screen session.
