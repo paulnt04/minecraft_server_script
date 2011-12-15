@@ -1,20 +1,27 @@
 #!/usr/bin/env ruby
 
-prefix = "/prgm/local"
-command, name, _options = ARGV
-working_dir = "#{prefix}/minecraft_#{name.to_s}"
-if !(File.exists?(working_dir))
+prefix = "/prgm/local/minecraft"
+command, type, name, *_options = ARGV
+if _options && _options.class.to_s == "Array"
+  _options = _options.join
+end
+if !(type =~ /(minecraft|bukkit)/i) && !(command =~ /(status|list)/)
+  raise RuntimeError, "Type #{type} not recognized. Please use [minecraft|bukkit]"
+end
+working_dir = "#{prefix}/#{type if !(name.nil?)}#{'_' if !(type.nil? || name.nil?)}#{name.to_s}"
+if !(File.exists?(working_dir)) && !name.nil? && command =~ /generate/
   @new = true
-  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /template/}.count
+  number = %x[ls #{prefix}].split(/\n/).select{|d| d =~ /(minecraft|bukkit)/}.reject{|d| d =~ /\.(template|plugins)/}.count
   port = 48565 + number.to_i
-  mkdir = system(%[cp -r #{prefix}/minecraft.template #{working_dir}])
+  mkdir = system("cp -r #{prefix}/#{type}.template #{working_dir}")
   if !(mkdir)
     raise RuntimeError, "Error creating server directory"
   end
   Dir.chdir(working_dir) do
-    %w[banned-ips.txt banned-players.txt server.log white-list.txt].each do |filename|
+    %w[banned-ips.txt banned-players.txt server.log white-list.txt].concat((type =~ /bukkit/i ? ['permissions.yml'] : [])).each do |filename|
       File.open(filename, 'w+') {}
     end
+    Dir.mkdir('plugins')
     options = eval(_options || "{}")
     if options.class != Hash
       options = {}
@@ -32,12 +39,48 @@ if !(File.exists?(working_dir))
         end
       end
     end
+    if type =~ /bukkit/i
+      File.open('bukkit.yml','w+') do |f|
+        f.write <<-EOF
+# This is the main configuration file for Bukkit.
+# As you can see, there's actually not that much to configure without any plugins.
+# For a reference for any variable inside this file, check out the bukkit wiki at
+# http://wiki.bukkit.org/Bukkit.yml
+# 
+# If you need help on this file, feel free to join us on irc or leave a message
+# on the forums asking for advice.
+# 
+# IRC: #bukkit @ esper.net
+#    (If this means nothing to you, just go to http://webchat.esper.net/?channels=bukkit )
+# Forums: http://forums.bukkit.org/forums/bukkit-help.6/
+# Twitter: http://twitter.com/Craftbukkit
+# Bug tracker: http://leaky.bukkit.org/
+
+
+settings:
+  allow-end: true
+  spawn-radius: 16
+  permissions-file: permissions.yml
+  update-folder: update
+  ping-packet-limit: 100
+aliases:
+  icanhasbukkit:
+  - version
+database:
+  username: bukkit
+  isolation: SERIALIZABLE
+  driver: org.sqlite.JDBC
+  password: walrus
+  url: jdbc:sqlite:{DIR}{NAME}.db
+  EOF
+      end
+    end
     if name.to_i != 0
-      _name = "minecraft#{name}"
+      _name = "#{type}#{name}"
     else
       _name = name
     end
-    defaults = eval(%[{"allow-nether" => true, "level-name" => "#{_name}", "allow-flight" => false, "enable-query" => false, "server-port" => #{port}, "enable-rcon" => false, "level-seed" => "", "server-ip" => "", "white-list" => false, "spawn-animals" => true, "online-mode" => true, "pvp" => true, "difficulty" => 1, "gamemode" => 0, "max-players" => 20, "spawn-monsters" => true, "view-distance" => 10, "motd" => "A Minecraft Server"}])
+    defaults = {"allow-nether" => true, "level-name" => _name, "allow-flight" => false, "enable-query" => false, "server-port" => port, "enable-rcon" => false, "level-seed" => "", "server-ip" => "", "white-list" => false, "spawn-animals" => true, "online-mode" => true, "pvp" => true, "difficulty" => 1, "gamemode" => 0, "max-players" => 20, "spawn-monsters" => true, "view-distance" => 10, "motd" => "A Minecraft Server"}
     File.open('server.properties','w+') do |f|
       defaults.each do |k,v|
         if options[k.to_s].to_s.empty?
@@ -50,46 +93,71 @@ if !(File.exists?(working_dir))
     end
   end
 end
+if !Dir.exists?(working_dir)
+  raise RuntimeError, "Error: Server at #{working_dir} does not exist!"
+end
 Dir.chdir(working_dir) do
+  rm = "#{type}_#{name}"
+  rt = "#{type || "(minecraft|bukkit)"}_.+$"
   case command
   when /start/
-    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
-      %x[screen -dmS minecraft_#{name} java -Xms4096M -Xmx4096M -jar minecraft_server.jar nogui]
-      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+    if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
+      if type =~ /bukkit/i
+	jar = %[ls -t].split(/\n/).select{|j| j =~ /craftbukkit.+\.jar/}.first
+        %x[screen -dmS #{type}_#{name} java -Xmx4096M -Xincgc -jar #{jar}]
+      else
+        %x[screen -dmS #{type}_#{name} java -Xms4096M -Xmx4096M -jar minecraft_server.jar nogui]
+      end
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}
       pids.each do |pid|
-        puts "MineCraft Server #{name} running in screen session \"#{pid}\""
+        puts "#{type.capitalize} Server #{name} running in screen session \"#{pid}\""
       end
     else
-      puts "MineCraft Server #{name} is already running"
+      puts "#{type.capitalize} Server #{name} is already running"
     end
   when /stop/
-    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
-      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+    if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
+      pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}
       pids.each do |pid|
-        system(%x[screen -x #{pid} -X kill && sleep 2])
+        system(%x[screen -x #{pid} -X kill && sleep 5])
       end
-      if !(%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}.empty?)
-        puts "MineCraft Server #{name} with pid#{'s' if pids.count > 1} #{pids.join(', ')} ha#{pids.count > 1 ? 've' : 's'} been successfully stopped"
+      if (%x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}.empty?)
+        puts "#{type.capitalize} Server #{name} with pid#{'s' if pids.count > 1} #{pids.join(', ')} ha#{pids.count > 1 ? 've' : 's'} been successfully stopped"
       else
-        puts "Error: MineCraft Server #{name} is still running"
+        puts "Error: #{type.capitalize} Server #{name} is still running"
       end
     else
-      puts "MineCraft Server #{name} is not running."
+      puts "#{type.capitalize} Server #{name} is not running."
     end
-  when /status/
-    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found)? in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.minecraft_#{name}$/}
+  when /(status|list)/
+    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\((Detached|Attached)\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{name ? rm : rt}$/}.sort_by{|a| [a.gsub(/\d+\./,'').gsub(/_.+/,''), a.gsub(/\d+\.(bukkit|minecraft)_/,'')]}
+    netstat = %x[netstat 2> /dev/null].split(/\n/)
     pids.each do |pid|
-      puts "MineCraft Server #{name} running in screen session \"#{pid}\""
+      pid_dir = "#{prefix}/#{pid.gsub(/^\d+\./,'')}"
+      serverport = File.read("#{pid_dir}/server.properties").split(/\n/).map{|p| tmp = {p.split("=")[0] => (p.split("=")[1] rescue "")}.to_hash}.inject{|h,p| h.merge p}['server-port']
+      user_count = netstat.select{|n| n =~ /.*:#{serverport}\s.*ESTABLISHED.*/i}.count
+      puts "#{type.capitalize rescue pid.gsub(/\d+\./,'').gsub(/_.+/,'').capitalize } Server #{name || pid.gsub(/\d+\.(minecraft|bukkit)_/,'')} running in screen session \"#{pid}\" with #{user_count} users connected"
     end
-  when /update/
-    backup = system(%[cp minecraft_server.jar minecraft_server.jar.backup])
-    update = system(%[curl -O https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar])
-    if update
-      puts "MineCraft Server #{name} has been updated successfully"
-      system(%[rm minecraft_server.jar.backup])
+    if pids.empty?
+      puts "No #{type.capitalize + " " rescue nil}Servers are running."
+    end
+  when /view/
+    properties = File.read('server.properties').split(/\n/)
+    puts "Server Properties for #{type.capitalize} Server #{name}"
+    properties.each {|p| puts p if !(p =~ /^#.*/)}
+  when /update/ 
+    if type =~ /minecraft/i
+      backup = system(%[for i in *.jar; do mv "$i" "$i".backup; done])
+      update = system(%[curl -O https://s3.amazonaws.com/MinecraftDownload/launcher/minecraft_server.jar])
+      if update
+        puts "Bukkit Server #{name} has been updated successfully"
+        system(%[rm *.jar.backup])
+      else
+        puts "There was an error updating craftbukkit.jar"
+        system(%x[for i in *.backup; do mv "$i" "${i/.backup}"; done])
+      end
     else
-      puts "There was an error updating minecraft_server.jar"
-      system(%x[mv minecraft_server.jar.backup minecraft_server.jar])
+      puts "Updating for #{type.capitalize} Server is not supported."
     end
   when /modify/
     options = eval(_options || "{}")
@@ -118,13 +186,26 @@ Dir.chdir(working_dir) do
         f.write("#{k}=#{option}\n")
       end
     end
+  when /control/
+    pids = %x[screen -ls].gsub("There are screens on:\r\n\t",'').gsub(/(\d+|No) Sockets (found )?in.*.\n\r\n/,'').gsub(/\t\(Detached\)/,'').gsub(/\t/,'').split(/\n/).select{|p| p =~ /\d+\.#{rm}$/}
+    pids.each do |pid|
+      system(%[screen -dr #{pid}])
+    end
+    puts "#{type.capitalize} Server #{name} is not running!" if pids.empty?
   when /generate/
     if @new
-      puts "Successfully created new server in #{working_dir}"
+      puts "Successfully created new #{type.capitalize} Server in #{working_dir}"
     else
-      puts "Server #{name} already exists!"
+      puts "Error: #{type.capitalize} Server #{name} already exists!"
+    end
+  when /(remove|delete)/
+    deleted = system("rm -rf #{working_dir}") if !name.nil?
+    if deleted
+      puts "Successfully deleted #{type.capitalize} Server #{name}"
+    else
+      puts "Error: There was an error removing #{type.capitalize} Server #{name}"
     end
   else
-    puts "MineCraft Server Script v1.0","minecraft_server [command] [name] [options]","commands: generate/start/stop/status/update/modify"
+    puts "MineCraft Server Script v1.0","minecraft_server [command] [type] [name] [options]","commands: generate/start/stop/status/modify"
   end
 end

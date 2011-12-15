@@ -1,0 +1,58 @@
+= MineCraft Server Script v1.0
+
+This script allows management of multiple minecraft and bukkit servers.
+
+= Requirements
+- Ruby 1.9.x
+- screen
+- curl
+- Linux (or possibly Mac OS X or other *nix systems)
+- MineCraft 1.0+
+- MineCraft Server 1.0.1+
+- Bukkit Server 1.0.1+
+
+= Installation
+
+- Make sure to put minecraft_server in a folder in your executable path.
+- Make sure to edit the prefix to the path where you will but your servers (all servers will be of the same naming schema for this to work)
+- Place bukkit.template, bukkit.plugins, and minecraft.template in the directory you set as your prefix
+- Download the latest minecraft_server.jar and craftbukkit-VERSION.jar and place in the respective .template directories
+
+= Usage
+
+== Bukkit Plugins (Not yet implemented)
+- Place plugin files (what you would put into your {server_dir}/plugins directory) in a directory named for the plugin in the bukkit.plugins directory (ex: bukkit.plugins/plugin_name/plugin.jar)
+
+== Server Management
+
+$ minecraft_server [command] [type] [name] [options]
+
+Type:
+bukkit or minecraft
+
+Name:
+alphanumeric
+
+Commands:
+generate - (requires type and name. options allow customization). Copies the #{type}.template to #{type}_#{name} and generates default config options. options is a hash (in bash, needs to be escaped or in quotes). and takes any option in server.properties and takes an array for :ops and :admin
+Ex: minecraft_server generate minecraft 1 "{:ops => ['username'], :admin => ['username'], 'server-port' => 12345}"
+
+start - (requires type and name). Starts server in a screen session.
+
+stop - (requires type and name). Stops server by killing screen session (not clean).
+
+view - (requires type and name). Shows server.properties
+
+control - (requires type and name). Connects to screen session (Ctrl-a + d disconnects from screen session)
+
+remove - (requires type and name). Deletes server (does not prompt yet).
+
+modify - (requires type and name and options). Edits server.properties, ops, and admin via hash (like generate)
+
+status - (type and name are OPTIONAL). Shows status of all servers and number of connected users. When type is given, only servers of type are shown. When type AND name are given, only that server will be shown.
+
+update - (requires type. only minecraft is supported as of 1.0). Downloads latest version to server directory. (Does not yet update template files)
+
+= License
+Released under MIT LICENSE
+(c) 2011 Paul Panarese
